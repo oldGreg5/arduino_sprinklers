@@ -1,5 +1,5 @@
 //#define BLYNK_DEBUG
-#define BLYNK_PRINT Serial    // Comment this out to disable prints and save space
+//#define BLYNK_PRINT Serial    // Comment this out to disable prints and save space
 #include <ESP8266_Lib.h>
 #include <BlynkSimpleShieldEsp8266.h>
 #include <SimpleTimer.h>
@@ -31,14 +31,14 @@ SimpleTimer timer;
 
 int value_water;
 //default watering time
-int wateringTimeSliderValueDefault = 25;
+int wateringTimeSliderValueDefault = 70;
 int wateringTimeSliderValue;
 int resetSliderValue;
 boolean tankFull = false;
 short hydroState = 0;
 short wateringTime = 0;
 boolean tankFullAtStart = false;
-short autoStopWateringAfter = 25;
+short autoStopFailSafe = 3;
 
 BLYNK_WRITE(VPIN_SLIDER_TIME)
 {
@@ -64,23 +64,15 @@ BLYNK_WRITE(VPIN_HYDRO)
 	}
 }
 
-void checkWaterTank() {
-	value_water = analogRead(PIN_WATER_SENSOR);
-	//tank status is full but now sensor reports its not full
-	if (value_water > 800 && tankFull == true) {
-		tankFull = false;
-		printToLcd(1, "Filling tank...");
-		digitalWrite(PIN_WELL_PUMP, LOW);
-	}
-}
-
 void fillTankWhenWatering() {
-	short waterLevel = analogRead(PIN_WATER_SENSOR);
-	//tank not full
-	if (hydroState == 1 && waterLevel > 800) {
-		digitalWrite(PIN_WELL_PUMP, LOW);
-		tankFull = false;
-		printToLcd(1, "Filling tank...");
+	if (hydroState == 1) {
+		short waterLevel = analogRead(PIN_WATER_SENSOR);
+		//tank not full
+		if (waterLevel > 800) {
+			digitalWrite(PIN_WELL_PUMP, LOW);
+			tankFull = false;
+			printToLcd(1, "Filling tank...");
+		}
 	}
 }
 
@@ -92,20 +84,18 @@ void stopWatering() {
 		printToLcd(0, tmp);
 	}
 
-	if (tankFullAtStart) {
-		autoStopWateringAfter = wateringTimeSliderValue;
-	} else {
-		autoStopWateringAfter = 3;
-	}
+	short stopTime =
+			tankFullAtStart ? wateringTimeSliderValue : autoStopFailSafe;
 
-	if (wateringTime > autoStopWateringAfter) {
+	if (wateringTime >= stopTime && hydroState == 1) {
 		//stop hydro
 		digitalWrite(PIN_HYDRO, HIGH);
 		hydroState = 0;
 		Blynk.virtualWrite(VPIN_HYDRO, 0);
-		String tmp1 = "FINISHED, Time ";
+		String tmp1 = "FINISH,Time ";
 		tmp1 += wateringTime;
 		printToLcd(0, tmp1);
+		Blynk.notify("Watering finished,snails say HI!");
 	}
 }
 
@@ -117,6 +107,18 @@ void checkTankFull() {
 			digitalWrite(PIN_WELL_PUMP, HIGH);
 			tankFull = true;
 		}
+	}
+}
+
+void checkWaterTank() {
+	if (!tankFull)
+		return;
+	value_water = analogRead(PIN_WATER_SENSOR);
+	//tank status is full but now sensor reports its not full
+	if (value_water > 800) {
+		tankFull = false;
+		printToLcd(1, "Filling tank...");
+		digitalWrite(PIN_WELL_PUMP, LOW);
 	}
 }
 
@@ -138,12 +140,22 @@ void printToLcd(short line, String message) {
 }
 
 void setup() {
+	unsigned long second = 1000L;
+	unsigned long minute = 60 * second;
+	unsigned long hour = 60 * minute;
+
 	// Set console baud rate
 	Serial.begin(9600);
 	delay(10);
 	// Set ESP8266 baud rate
 	EspSerial.begin(115200);
-	delay(10);
+	//when after blackout, wait for router to come back
+	if (debug) {
+		delay(10);
+	} else {
+		delay(80000L);
+	}
+
 	Blynk.begin(auth, wifi, SSID, PASS);
 
 	pinMode(PIN_WATER_SENSOR, INPUT);
@@ -153,13 +165,6 @@ void setup() {
 	//set well and sprinklers pump off by default
 	digitalWrite(PIN_WELL_PUMP, HIGH);
 	digitalWrite(PIN_HYDRO, HIGH);
-	Blynk.virtualWrite(VPIN_HYDRO, 0);
-	Blynk.virtualWrite(VPIN_SLIDER_TIME, wateringTimeSliderValueDefault);
-	wateringTimeSliderValue = wateringTimeSliderValueDefault;
-
-	unsigned long second = 1000L;
-	unsigned long minute = 60 * second;
-	unsigned long hour = 60 * minute;
 
 	unsigned long checkTankInterval = 20 * minute;
 	unsigned long wateringRoutineInterval = 1 * minute;
@@ -167,6 +172,7 @@ void setup() {
 
 	if (debug) {
 		stopWateringInterval = second;
+		checkTankInterval = second * 5;
 	}
 
 	timer.setInterval(checkTankInterval, checkWaterTank);
@@ -178,7 +184,12 @@ void setup() {
 	while (Blynk.connect() == false) {
 		// Wait until connected
 	}
+	Blynk.virtualWrite(VPIN_HYDRO, 0);
+	Blynk.virtualWrite(VPIN_SLIDER_TIME, wateringTimeSliderValueDefault);
+	wateringTimeSliderValue = wateringTimeSliderValueDefault;
 
+	//around 40 chars can be seen on phone
+	Blynk.notify("Snails are back online and thirsty ;)");
 	printToLcd(0, "READY");
 	checkTankFullColdStart();
 }
