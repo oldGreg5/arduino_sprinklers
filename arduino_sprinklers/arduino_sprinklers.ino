@@ -11,15 +11,20 @@
 #define VPIN_HYDRO 5
 #define PIN_HYDRO 10
 #define VPIN_SLIDER_TIME 0
+#define DEBUG
+
 int sensor_water = A0;
 WidgetLCD lcd(V3);
 
 ESP8266 wifi(&EspSerial);
-boolean debug = false;
+//boolean debug = false;
+#ifdef DEBUG
+//debug auth
+char auth[] = "70be1068f16d4d8097f884ce898c98ea";
+#else
 //release auth
 char auth[] = "77a8fc1fbd2046299004d28217bc4199";
-//debug auth
-//char auth[] = "70be1068f16d4d8097f884ce898c98ea";
+#endif
 
 const char* SSID = "babilons";
 const char* PASS = "thai0lai5";
@@ -150,11 +155,11 @@ void setup() {
 	// Set ESP8266 baud rate
 	EspSerial.begin(115200);
 	//when after blackout, wait for router to come back
-	if (debug) {
-		delay(10);
-	} else {
-		delay(80000L);
-	}
+#ifdef DEBUG
+	delay(10);
+#else
+	delay(80000L);
+#endif
 
 	Blynk.begin(auth, wifi, SSID, PASS);
 
@@ -170,10 +175,10 @@ void setup() {
 	unsigned long wateringRoutineInterval = 1 * minute;
 	unsigned long stopWateringInterval = minute;
 
-	if (debug) {
-		stopWateringInterval = second;
-		checkTankInterval = second * 5;
-	}
+#ifdef DEBUG
+	stopWateringInterval = second;
+	checkTankInterval = second * 5;
+#endif
 
 	timer.setInterval(checkTankInterval, checkWaterTank);
 	timer.setInterval(second * 35, fillTankWhenWatering);
