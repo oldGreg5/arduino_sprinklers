@@ -1,8 +1,12 @@
 //#define BLYNK_DEBUG
-//#define BLYNK_PRINT Serial    // Comment this out to disable prints and save space
+#define BLYNK_PRINT Serial    // Comment this out to disable prints and save space
+#include <Blynk.h>
+#include <BlynkESP8266_Lib.h>
 #include <ESP8266_Lib.h>
 #include <BlynkSimpleShieldEsp8266.h>
 #include <SimpleTimer.h>
+#include "DHT.h"
+//#include <ESP8266mDNS.h>
 
 // Set ESP8266 Serial object
 #define EspSerial Serial
@@ -12,6 +16,13 @@
 #define PIN_HYDRO 10
 #define VPIN_SLIDER_TIME 0
 #define DEBUG
+
+//dht22
+#define DHTPIN 11     // what digital pin we're connected to
+#define VPIN_TEMP 1
+#define VPIN_HUM 2
+#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
+DHT dht(DHTPIN, DHTTYPE);
 
 int sensor_water = A0;
 WidgetLCD lcd(V3);
@@ -45,15 +56,18 @@ short wateringTime = 0;
 boolean tankFullAtStart = false;
 short autoStopFailSafe = 3;
 
-BLYNK_WRITE(VPIN_SLIDER_TIME)
-{
+//telnet serial
+//const uint16_t aport = 23;
+//WiFiServer TelnetServer(aport);
+//WiFiClient TelnetClient;
+
+BLYNK_WRITE(VPIN_SLIDER_TIME) {
 	//   BLYNK_LOG("Got a value: %s", param.asStr());
 	wateringTimeSliderValue = param.asInt();
 	//  Blynk.virtualWrite(V1, wateringTimeSliderValue); //show slider value on vDisplay with Push setting
 }
 
-BLYNK_WRITE(VPIN_HYDRO)
-{
+BLYNK_WRITE(VPIN_HYDRO) {
 	if (param.asInt() == 1) {
 		digitalWrite(PIN_HYDRO, 0);
 		hydroState = 1;
@@ -139,6 +153,30 @@ void checkTankFullColdStart() {
 	}
 }
 
+void checkTempAndHum() {
+	// Reading temperature or humidity takes about 250 milliseconds!
+	// Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+	float h = dht.readHumidity();
+	// Read temperature as Celsius (the default)
+	float t = dht.readTemperature();
+	// Read temperature as Fahrenheit (isFahrenheit = true)
+	float f = dht.readTemperature(true);
+
+	// Check if any reads failed and exit early (to try again).
+	if (isnan(h) || isnan(t) || isnan(f)) {
+		Serial.println("Failed to read from DHT sensor!");
+		return;
+	}
+
+	// Compute heat index in Fahrenheit (the default)
+//  hif = dht.computeHeatIndex(f, h);
+	// Compute heat index in Celsius (isFahreheit = false)
+	t = dht.computeHeatIndex(t, h, false);
+
+	Blynk.virtualWrite(VPIN_TEMP, t);
+	Blynk.virtualWrite(VPIN_HUM, h);
+}
+
 void printToLcd(short line, String message) {
 	lcd.print(0, line, "                ");
 	lcd.print(0, line, message);
@@ -153,7 +191,7 @@ void setup() {
 	Serial.begin(9600);
 	delay(10);
 	// Set ESP8266 baud rate
-	EspSerial.begin(115200);
+	EspSerial.begin(9600);
 	//when after blackout, wait for router to come back
 #ifdef DEBUG
 	delay(10);
@@ -162,6 +200,9 @@ void setup() {
 #endif
 
 	Blynk.begin(auth, wifi, SSID, PASS);
+
+//dht22
+	dht.begin();
 
 	pinMode(PIN_WATER_SENSOR, INPUT);
 	pinMode(PIN_WELL_PUMP, OUTPUT);
@@ -185,6 +226,8 @@ void setup() {
 	timer.setInterval(stopWateringInterval, stopWatering);
 	//check if tank is full
 	timer.setInterval(second * checkTankFullInterval, checkTankFull);
+	//dht22
+	timer.setInterval(2000, checkTempAndHum);
 
 	while (Blynk.connect() == false) {
 		// Wait until connected
