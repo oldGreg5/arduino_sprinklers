@@ -1,33 +1,50 @@
 //#define BLYNK_DEBUG
-#define BLYNK_PRINT Serial    // Comment this out to disable prints and save space
-#include <Blynk.h>
-#include <BlynkESP8266_Lib.h>
-#include <ESP8266_Lib.h>
-#include <BlynkSimpleShieldEsp8266.h>
+//#define BLYNK_PRINT Serial    // Comment this out to disable prints and save space
+//#include <Blynk.h>
+//#include <BlynkESP8266_Lib.h>
+//#include <ESP8266_Lib.h>
+//#include <BlynkSimpleShieldEsp8266.h>
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
 #include <SimpleTimer.h>
 #include "DHT.h"
+
+//OTA
+//#include <WiFiClient.h>
+//#include <ESP8266WebServer.h>
 //#include <ESP8266mDNS.h>
+//#include <ESP8266HTTPUpdateServer.h>
+
+//OTA new
+#include <ArduinoOTA.h>
 
 // Set ESP8266 Serial object
-#define EspSerial Serial
-#define PIN_WATER_SENSOR 0
-#define PIN_WELL_PUMP 11
+//#define EspSerial Serial
+#define PIN_WATER_SENSOR 4
+#define PIN_WELL_PUMP 5
+#define PIN_HYDRO 12
+//dht22
+#define DHTPIN 13
+int sensor_water = A0;
+
 #define VPIN_HYDRO 5
-#define PIN_HYDRO 10
 #define VPIN_SLIDER_TIME 0
+#define VPIN_TEMP 1
+#define VPIN_HUM 2
+
 #define DEBUG
 
 //dht22
-#define DHTPIN 11     // what digital pin we're connected to
-#define VPIN_TEMP 1
-#define VPIN_HUM 2
 #define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
 DHT dht(DHTPIN, DHTTYPE);
 
-int sensor_water = A0;
+//OTA
+//ESP8266WebServer httpServer(80);
+//ESP8266HTTPUpdateServer httpUpdater;
+
 WidgetLCD lcd(V3);
 
-ESP8266 wifi(&EspSerial);
+//ESP8266 wifi(&EspSerial);
 //boolean debug = false;
 #ifdef DEBUG
 //debug auth
@@ -37,6 +54,7 @@ char auth[] = "70be1068f16d4d8097f884ce898c98ea";
 char auth[] = "77a8fc1fbd2046299004d28217bc4199";
 #endif
 
+const char* host = "esp8266-webupdate";
 const char* SSID = "babilons";
 const char* PASS = "thai0lai5";
 
@@ -191,7 +209,7 @@ void setup() {
 	Serial.begin(9600);
 	delay(10);
 	// Set ESP8266 baud rate
-	EspSerial.begin(9600);
+//	EspSerial.begin(9600);
 	//when after blackout, wait for router to come back
 #ifdef DEBUG
 	delay(10);
@@ -199,7 +217,42 @@ void setup() {
 	delay(80000L);
 #endif
 
-	Blynk.begin(auth, wifi, SSID, PASS);
+	//OTA
+//	WiFi.mode(WIFI_AP_STA);
+
+	//OTA new
+	WiFi.mode(WIFI_STA);
+
+	Blynk.begin(auth, SSID, PASS);
+
+	while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+		WiFi.begin(SSID, PASS);
+		Serial.println("WiFi failed, retrying.");
+	}
+
+	while (Blynk.connect() == false) {
+		// Wait until connected
+	}
+
+	//OTA
+//	MDNS.begin(host);
+//
+//	httpUpdater.setup(&httpServer);
+//	httpServer.begin();
+//
+//	MDNS.addService("http", "tcp", 80);
+//
+//	delay(10 * 1000);
+//	Serial.printf(
+//			"HTTPUpdateServer ready! Open http://%s.local/update in your browser\n",
+//			host);
+//	Serial.println("********************************************");
+//	Serial.printf("http://");
+//	Serial.print(WiFi.localIP());
+//	Serial.print("/update sssss\n");
+
+	//OTA new
+	ArduinoOTA.begin();
 
 //dht22
 	dht.begin();
@@ -229,9 +282,6 @@ void setup() {
 	//dht22
 	timer.setInterval(2000, checkTempAndHum);
 
-	while (Blynk.connect() == false) {
-		// Wait until connected
-	}
 	Blynk.virtualWrite(VPIN_HYDRO, 0);
 	Blynk.virtualWrite(VPIN_SLIDER_TIME, wateringTimeSliderValueDefault);
 	wateringTimeSliderValue = wateringTimeSliderValueDefault;
@@ -245,4 +295,8 @@ void setup() {
 void loop() {
 	Blynk.run();
 	timer.run();
+	//OTA
+//	httpServer.handleClient();
+	//OTA new
+	ArduinoOTA.handle();
 }
